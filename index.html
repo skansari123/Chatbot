@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Business Support AI</title>
+    <style>
+        :root { --primary: #2563eb; --hover: #16a34a; --bg: #f3f4f6; }
+        * { box-sizing: border-box; font-family: sans-serif; margin: 0; padding: 0; }
+        
+        /* 1. Chat Icon Button */
+        #db-chat-icon {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: var(--primary);
+            color: white;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 28px;
+            cursor: pointer;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            z-index: 999999;
+        }
+
+        /* 2. Full Screen App Container (Fixes Mobile Viewport & Scrolling) */
+        .app-container { 
+            position: fixed;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            right: 0;
+            width: 100vw; 
+            height: 100%;
+            background: white; 
+            display: none; 
+            flex-direction: column; 
+            z-index: 999998;
+            overflow: hidden;
+        }
+        
+        header { padding: 15px 20px; background: var(--primary); color: white; display: flex; justify-content: space-between; align-items: center; height: 60px; }
+        .clear-btn { background: #1d4ed8; color: white; border: none; padding: 8px 12px; border-radius: 6px; cursor: pointer; font-size: 0.8rem; }
+        .clear-btn:hover { background: var(--hover); }
+        .send-btn { border-radius:50%; border:none; background:var(--primary); color:white; width:40px; height:40px; cursor:pointer; flex-shrink: 0; }
+        
+        /* Smooth Scrolling Fix */
+        .chat-area { 
+            flex-grow: 1; 
+            padding: 20px; 
+            overflow-y: auto; 
+            display: flex; 
+            flex-direction: column; 
+            gap: 15px; 
+            background: #f8fafc;
+            -webkit-overflow-scrolling: touch;
+        }
+        .msg { padding: 12px 16px; border-radius: 15px; max-width: 80%; font-size: 0.9rem; line-height: 1.4; word-break: break-word; }
+        .bot { background: #e5e7eb; align-self: flex-start; border-bottom-left-radius: 0; color: #1e293b; }
+        .user { background: var(--primary); color: white; align-self: flex-end; border-bottom-right-radius: 0; }
+        
+        @keyframes wave {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-5px); }
+        }
+        .wave-dot { display: inline-block; width: 6px; height: 6px; background: #888; border-radius: 50%; margin: 0 2px; animation: wave 0.6s infinite; }
+        .wave-dot:nth-child(2) { animation-delay: 0.2s; }
+        .wave-dot:nth-child(3) { animation-delay: 0.4s; }
+
+        /* Fixed Input Area at Bottom */
+        .input-area { 
+            padding: 10px 15px; 
+            border-top: 1px solid #eee; 
+            display: flex; 
+            gap: 10px; 
+            background: white; 
+            align-items: center;
+            height: 70px;
+        }
+        input { flex-grow: 1; padding: 12px 15px; border: 1px solid #ddd; border-radius: 20px; outline: none; font-size: 16px; /* 16px prevents zoom on iOS */ }
+    </style>
+</head>
+<body>
+
+<div id="db-chat-icon">💬</div>
+
+<div class="app-container" id="db-chat-box">
+    <header>
+        <strong>Business Bot</strong>
+        <div style="display: flex; gap: 10px; align-items: center;">
+            <button class="clear-btn" id="db-clear-btn">Clear Chat</button>
+            <span style="cursor:pointer; font-size:32px; font-weight:bold; line-height:0; padding: 10px;" id="db-close-btn">&times;</span>
+        </div>
+    </header>
+    <div class="chat-area" id="chat-box">
+        <div class="msg bot">Hello! How can I help you?</div>
+    </div>
+    <div class="input-area">
+        <input type="text" id="user-input" placeholder="Ask something...">
+        <button class="send-btn" id="db-send-btn">➤</button>
+    </div>
+</div>
+
+<script>
+    (function() {
+        const BACKEND = "https://sarifeen272--acaf97cc62f811f1828a1607ee4eb77e.web.val.run";
+        const icon = document.getElementById('db-chat-icon');
+        const box = document.getElementById('db-chat-box');
+        const closeBtn = document.getElementById('db-close-btn');
+        const clearBtn = document.getElementById('db-clear-btn');
+        const sendBtn = document.getElementById('db-send-btn');
+        const input = document.getElementById('user-input');
+        const chatBox = document.getElementById('chat-box');
+
+        if(icon && box) {
+            // Open karne par Icon GAYAB ho jayega
+            icon.onclick = function() { 
+                box.style.display = 'flex'; 
+                icon.style.display = 'none';
+                setTimeout(() => { chatBox.scrollTop = chatBox.scrollHeight; }, 100);
+            };
+            
+            // Close karne par Icon WAPAS aa jayega
+            closeBtn.onclick = function() { 
+                box.style.display = 'none'; 
+                icon.style.display = 'flex';
+            };
+            
+            clearBtn.onclick = function() { 
+                chatBox.innerHTML = '<div class="msg bot">Chat cleared. How can I help?</div>'; 
+            };
+            
+            async function sendMessage() {
+                if(!input.value.trim()) return;
+                
+                chatBox.innerHTML += `<div class="msg user">${input.value}</div>`;
+                const msg = input.value;
+                input.value = "";
+                chatBox.scrollTop = chatBox.scrollHeight;
+                
+                const waveDiv = document.createElement('div');
+                waveDiv.className = 'msg bot';
+                waveDiv.innerHTML = '<span class="wave-dot"></span><span class="wave-dot"></span><span class="wave-dot"></span>';
+                chatBox.appendChild(waveDiv);
+                chatBox.scrollTop = chatBox.scrollHeight;
+                
+                try {
+                    const res = await fetch(`${BACKEND}/chat`, { 
+                        method: 'POST', 
+                        body: JSON.stringify({ message: msg }), 
+                        headers:{'Content-Type':'application/json'}
+                    });
+                    const resData = await res.json();
+                    waveDiv.remove();
+                    chatBox.innerHTML += `<div class="msg bot">${resData.reply}</div>`;
+                } catch(err) {
+                    waveDiv.remove();
+                    chatBox.innerHTML += `<div class="msg bot">Sorry, network issue hai. Please try again!</div>`;
+                }
+                chatBox.scrollTop = chatBox.scrollHeight;
+            }
+            
+            sendBtn.onclick = sendMessage;
+            input.onkeypress = function(e) {
+                if (e.key === 'Enter') sendMessage();
+            };
+
+            // Keyboard open hone par input box ko view me rakhne ka automatic fix
+            input.addEventListener('focus', () => {
+                setTimeout(() => {
+                    window.scrollTo(0, 0);
+                    document.body.scrollTop = 0;
+                    chatBox.scrollTop = chatBox.scrollHeight;
+                }, 300);
+            });
+        }
+    })();
+</script>
+</body>
+</html>
