@@ -6,7 +6,7 @@
     <title>Business Support AI</title>
     <style>
         :root { --primary: #2563eb; --hover: #16a34a; --bg: #f3f4f6; }
-        * { box-sizing: border-box; font-family: sans-serif; margin: 0; padding: 0; }
+        * { box-sizing: border-box; font-family: sans-serif; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
         
         /* 1. Chat Icon Button */
         #db-chat-icon {
@@ -27,7 +27,7 @@
             z-index: 999999;
         }
 
-        /* 2. Full Screen App Container (Fixes Mobile Viewport & Scrolling) */
+        /* 2. Full Screen App Container */
         .app-container { 
             position: fixed;
             top: 0;
@@ -58,11 +58,27 @@
             gap: 15px; 
             background: #f8fafc;
             -webkit-overflow-scrolling: touch;
+            position: relative;
         }
-        .msg { padding: 12px 16px; border-radius: 15px; max-width: 80%; font-size: 0.9rem; line-height: 1.4; word-break: break-word; }
+        
+        /* Message styling with text selection setup */
+        .msg { padding: 12px 16px; border-radius: 15px; max-width: 80%; font-size: 0.9rem; line-height: 1.4; word-break: break-word; position: relative; user-select: all; -webkit-user-select: all; cursor: pointer; }
         .bot { background: #e5e7eb; align-self: flex-start; border-bottom-left-radius: 0; color: #1e293b; }
         .user { background: var(--primary); color: white; align-self: flex-end; border-bottom-right-radius: 0; }
         
+        /* 🟢 Clickable Green Links Formatting */
+        .msg.bot a { color: #16a34a; font-weight: 600; text-decoration: underline; transition: color 0.2s; }
+        .msg.bot a:hover { color: #15803d; }
+        .msg.user a { color: #67e8f9; text-decoration: underline; }
+
+        /* 📋 Custom Context Menu Options styling */
+        .context-menu { position: fixed; background: white; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); display: none; z-index: 1000000; overflow: hidden; border: 1px solid #e5e7eb; width: 120px; }
+        .context-menu button { width: 100%; border: none; background: none; padding: 10px 15px; text-align: left; font-size: 0.9rem; cursor: pointer; color: #374151; }
+        .context-menu button:hover { background: #f3f4f6; color: #000; }
+        
+        /* Toast notification setup */
+        .toast { position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.8); color: white; padding: 8px 16px; border-radius: 20px; font-size: 0.8rem; display: none; z-index: 1000001; }
+
         @keyframes wave {
             0%, 100% { transform: translateY(0); }
             50% { transform: translateY(-5px); }
@@ -81,7 +97,7 @@
             align-items: center;
             height: 70px;
         }
-        input { flex-grow: 1; padding: 12px 15px; border: 1px solid #ddd; border-radius: 20px; outline: none; font-size: 16px; /* 16px prevents zoom on iOS */ }
+        input { flex-grow: 1; padding: 12px 15px; border: 1px solid #ddd; border-radius: 20px; outline: none; font-size: 16px; }
     </style>
 </head>
 <body>
@@ -105,9 +121,17 @@
     </div>
 </div>
 
+<div id="custom-menu" class="context-menu">
+    <button id="menu-copy-btn">Copy Text</button>
+    <button id="menu-edit-btn">Edit/Use</button>
+</div>
+
+<div id="toast" class="toast">Copied to clipboard!</div>
+
 <script>
     (function() {
-        const BACKEND = "https://sarifeen272--acaf97cc62f811f1828a1607ee4eb77e.web.val.run";
+        // Updated Val Backend Endpoint
+        const BACKEND = "https://sarifeen272--2ada4e6c65ab11f18ed31607ee4eb77e.web.val.run";
         const icon = document.getElementById('db-chat-icon');
         const box = document.getElementById('db-chat-box');
         const closeBtn = document.getElementById('db-close-btn');
@@ -115,16 +139,100 @@
         const sendBtn = document.getElementById('db-send-btn');
         const input = document.getElementById('user-input');
         const chatBox = document.getElementById('chat-box');
+        const menu = document.getElementById('custom-menu');
+        const toast = document.getElementById('toast');
+        
+        let activeMessageElement = null;
+        let pressTimer = null;
+
+        // 🔗 Function to automatically convert text URLs into Clickable Green Anchors
+        function linkify(text) {
+            const urlRegex = /(https?:\/\/[^\s]+)/g;
+            return text.replace(urlRegex, function(url) {
+                return `<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`;
+            });
+        }
+
+        // 📱 Long Press & Right Click Handler Engine
+        function attachPressEvents(element) {
+            // Desktop Right Click Event
+            element.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                openMenu(e.clientX, e.clientY, element);
+            });
+
+            // Mobile Touch Events (Long Press Simulation)
+            element.addEventListener('touchstart', (e) => {
+                pressTimer = setTimeout(() => {
+                    e.preventDefault();
+                    const touch = e.touches[0];
+                    openMenu(touch.clientX, touch.clientY, element);
+                }, 700); // 700ms safely triggers long press
+            }, { passive: false });
+
+            element.addEventListener('touchend', () => {
+                if (pressTimer) clearTimeout(pressTimer);
+            });
+
+            element.addEventListener('touchmove', () => {
+                if (pressTimer) clearTimeout(pressTimer);
+            });
+        }
+
+        function openMenu(x, y, element) {
+            activeMessageElement = element;
+            const menuWidth = 120;
+            const adjustedX = window.innerWidth - x < menuWidth ? x - menuWidth : x;
+            
+            menu.style.left = `${adjustedX}px`;
+            menu.style.top = `${y}px`;
+            menu.style.display = 'block';
+        }
+
+        // Close Menu on clicking anywhere else
+        document.addEventListener('click', (e) => {
+            if (e.target.offsetParent !== menu) {
+                menu.style.display = 'none';
+            }
+        });
+
+        // 📋 Menu Actions
+        document.getElementById('menu-copy-btn').onclick = function() {
+            if (!activeMessageElement) return;
+            const textToExtract = activeMessageElement.innerText;
+            navigator.clipboard.writeText(textToExtract).then(() => {
+                showToast("Copied to clipboard!");
+            }).catch(err => console.error("Failed to copy", err));
+            menu.style.display = 'none';
+        };
+
+        document.getElementById('menu-edit-btn').onclick = function() {
+            if (!activeMessageElement) return;
+            input.value = activeMessageElement.innerText;
+            input.focus();
+            menu.style.display = 'none';
+        };
+
+        function showToast(msg) {
+            toast.innerText = msg;
+            toast.style.display = 'block';
+            setTimeout(() => { toast.style.display = 'none'; }, 2000);
+        }
 
         if(icon && box) {
-            // Open karne par Icon GAYAB ho jayega
+            // Initialize first message formatting
+            const firstMsg = chatBox.querySelector('.msg.bot');
+            if(firstMsg) {
+                firstMsg.innerHTML = linkify(firstMsg.innerText);
+                attachPressEvents(firstMsg);
+            }
+
             icon.onclick = function() { 
                 box.style.display = 'flex'; 
                 icon.style.display = 'none';
                 setTimeout(() => { chatBox.scrollTop = chatBox.scrollHeight; }, 100);
             };
             
-            // Close karne par Icon WAPAS aa jayega
             closeBtn.onclick = function() { 
                 box.style.display = 'none'; 
                 icon.style.display = 'flex';
@@ -132,18 +240,30 @@
             
             clearBtn.onclick = function() { 
                 chatBox.innerHTML = '<div class="msg bot">Chat cleared. How can I help?</div>'; 
+                const newBotMsg = chatBox.querySelector('.msg.bot');
+                newBotMsg.innerHTML = linkify(newBotMsg.innerText);
+                attachPressEvents(newBotMsg);
             };
             
             async function sendMessage() {
                 if(!input.value.trim()) return;
                 
-                chatBox.innerHTML += `<div class="msg user">${input.value}</div>`;
-                const msg = input.value;
+                const msg = input.value.trim();
+                
+                // Append user message with auto-link detection
+                const userDiv = document.createElement('div');
+                userDiv.className = 'msg user';
+                userDiv.innerHTML = linkify(msg);
+                chatBox.appendChild(userDiv);
+                attachPressEvents(userDiv);
+                
                 input.value = "";
                 chatBox.scrollTop = chatBox.scrollHeight;
                 
+                // Typing Wave Effect
                 const waveDiv = document.createElement('div');
                 waveDiv.className = 'msg bot';
+                waveDiv.id = 'typing-wave';
                 waveDiv.innerHTML = '<span class="wave-dot"></span><span class="wave-dot"></span><span class="wave-dot"></span>';
                 chatBox.appendChild(waveDiv);
                 chatBox.scrollTop = chatBox.scrollHeight;
@@ -155,11 +275,25 @@
                         headers:{'Content-Type':'application/json'}
                     });
                     const resData = await res.json();
-                    waveDiv.remove();
-                    chatBox.innerHTML += `<div class="msg bot">${resData.reply}</div>`;
+                    
+                    const wave = document.getElementById('typing-wave');
+                    if(wave) wave.remove();
+                    
+                    // Append bot reply with dynamic custom green links
+                    const botDiv = document.createElement('div');
+                    botDiv.className = 'msg bot';
+                    botDiv.innerHTML = linkify(resData.reply);
+                    chatBox.appendChild(botDiv);
+                    attachPressEvents(botDiv);
                 } catch(err) {
-                    waveDiv.remove();
-                    chatBox.innerHTML += `<div class="msg bot">Sorry, network issue hai. Please try again!</div>`;
+                    const wave = document.getElementById('typing-wave');
+                    if(wave) wave.remove();
+                    
+                    const errDiv = document.createElement('div');
+                    errDiv.className = 'msg bot';
+                    errDiv.innerText = "Sorry, network issue hai. Please try again!";
+                    chatBox.appendChild(errDiv);
+                    attachPressEvents(errDiv);
                 }
                 chatBox.scrollTop = chatBox.scrollHeight;
             }
@@ -169,7 +303,6 @@
                 if (e.key === 'Enter') sendMessage();
             };
 
-            // Keyboard open hone par input box ko view me rakhne ka automatic fix
             input.addEventListener('focus', () => {
                 setTimeout(() => {
                     window.scrollTo(0, 0);
